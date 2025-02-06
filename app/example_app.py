@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
+from scipy.linalg.cython_lapack import dsycon
 from torch.optim import SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -200,8 +201,44 @@ class ExampleApp:
 
     def logImages(self, epoch_ndx, mode_str, dl):
         self.model.eval()
-        # 具体实现参见ref/ref_training.py
-        print("E{} {}:".format(epoch_ndx, mode_str), dl)
+        dtset = dl.dataset
+        for ndx in range(3):
+            img_t, lab_t = dtset[ndx]
+            img_g = img_t.to(self.device)
+            pred_g = self.model(img_g.unsqueeze(0))[0]
+
+            pred_a = pred_g.detach().cpu().numpy()[0]>0.5
+            lab_a = lab_t.numpy()[0]>0.5
+
+            img_a = img_t.numpy().transpose(1,2,0)
+            # 假阳性修改为红色，0通道表示R
+            img_a[:, :, 0] += pred_a & (1 - lab_a)
+            # 真阳性修改为绿色，1通道表示G
+            img_a[:, :, 1] += pred_a & lab_a
+
+            img_a *= 0.5
+            img_a.clip(0, 1, img_a)
+
+            writer = getattr(self, mode_str + '_writer')
+            writer.add_image(
+                f'{mode_str}/prediction_{ndx}:{dtset.datalines[ndx]}',
+                img_a,
+                self.totalTrainingSamples_count,
+                dataformats='HWC',
+            )
+
+            if epoch_ndx == 1:
+                img_a = img_t.numpy().transpose(1, 2, 0)
+                img_a[:, :, 1] += lab_a  # Green
+                img_a *= 0.5
+                img_a.clip(0, 1, img_a)
+                writer.add_image(
+                    f'{mode_str}/label_{ndx}:{dtset.datalines[ndx]}',
+                    img_a,
+                    self.totalTrainingSamples_count,
+                    dataformats='HWC',
+                )
+
 
     def logMetrics(self, epoch_ndx, mode_str, metrics_t):
         log.info("E{} {}".format(
