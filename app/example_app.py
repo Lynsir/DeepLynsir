@@ -6,7 +6,6 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
-from scipy.linalg.cython_lapack import dsycon
 from torch.optim import SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -98,6 +97,7 @@ class ExampleApp:
             batch_size=batch_size,
             num_workers=self.args.num_workers,
             pin_memory=self.use_cuda,
+            shuffle=True,
         )
 
         return train_dl
@@ -113,6 +113,7 @@ class ExampleApp:
             batch_size=batch_size,
             num_workers=self.args.num_workers,
             pin_memory=self.use_cuda,
+            shuffle=False,
         )
 
         return val_dl
@@ -127,7 +128,7 @@ class ExampleApp:
     def doTraining(self, epoch_ndx, train_dl):
         trnMetrics_g = torch.zeros(METRICS_SIZE, len(train_dl.dataset), device=self.device)
         self.model.train()
-        train_dl.dataset.shuffleSamples()
+        # train_dl.dataset.shuffleSamples()
 
         batch_iter = util.enumerateWithEstimate(
             train_dl,
@@ -163,7 +164,7 @@ class ExampleApp:
 
     def computeBatchLoss(self, batch_ndx, batch_tup, batch_size, metrics_g,
                          classificationThreshold=0.5):
-        input_t, label_t, series_list, _slice_ndx_list = batch_tup
+        input_t, label_t = batch_tup
 
         input_g = input_t.to(self.device, non_blocking=True)
         label_g = label_t.to(self.device, non_blocking=True)
@@ -382,4 +383,4 @@ class ExampleApp:
 
 
 if __name__ == "__main__":
-    ExampleApp().run()
+    ExampleApp(is_test_run=False).run()

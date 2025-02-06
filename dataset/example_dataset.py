@@ -35,7 +35,7 @@ class ExampleDataset(Dataset):
 
         # PIL读取的图片默认是 H W C 形状，需要转换成 C H W
         image = torch.from_numpy(np.array(image)/255.0).permute(2, 0, 1).to(torch.float32)
-        label = torch.from_numpy(np.array(label)[:,:,0]).to(torch.float32).unsqueeze(0)
+        label = torch.from_numpy(np.array(label)[:,:,0]).unsqueeze(0)
 
         return image, label
 
