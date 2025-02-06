@@ -60,9 +60,9 @@ class ExampleApp:
 
     def initModel(self):
         model = UNet(
-            in_channels=7,
+            in_channels=3,
             n_classes=1,
-            depth=3,
+            depth=4,
             wf=4,
             padding=True,
             batch_norm=True,
@@ -195,7 +195,8 @@ class ExampleApp:
         # 在损失中加上8倍的这个值以惩罚阴性样本带来的影响，因为阴性的样本数量远多于阳性
         # 预测的阴性越多，说明真阳越少，惩罚就越大，损失就越大
         # 可以理解为阳性比阴性重要8倍，不管怎么优化阴性的正确率，损失始终不会降低太多
-        return diceLoss_g.mean() + fnLoss_g.mean() * 8
+        # return diceLoss_g.mean() + fnLoss_g.mean() * 8
+        return diceLoss_g.mean()
 
     def logImages(self, epoch_ndx, mode_str, dl):
         self.model.eval()
@@ -341,9 +342,6 @@ class ExampleApp:
 
         self.trn_writer.close()
         self.val_writer.close()
-
-    def testRun(self):
-        print(self.args)
 
 
 if __name__ == "__main__":
