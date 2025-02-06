@@ -3,6 +3,12 @@ from torch.utils.data import Dataset
 import os
 from PIL import Image
 import numpy as np
+from util.logconf import logging
+
+log = logging.getLogger(__name__)
+# log.setLevel(logging.WARN)
+# log.setLevel(logging.INFO)
+log.setLevel(logging.DEBUG)
 
 
 class ExampleDataset(Dataset):
@@ -19,10 +25,10 @@ class ExampleDataset(Dataset):
             # 从文件中读取行默认结尾有一个'\n', 直接切片或者split都可以
             self.datalines = [dt[:-1] for dt in f.readlines()]
 
+        log.info("{!r}: {} {} samples".format(self, len(self.datalines), data_type))
 
     def __len__(self):
         return len(self.datalines)
-
 
     def __getitem__(self, idx):
         dataline = self.datalines[idx]
@@ -34,8 +40,8 @@ class ExampleDataset(Dataset):
         label = Image.open(label_path)
 
         # PIL读取的图片默认是 H W C 形状，需要转换成 C H W
-        image = torch.from_numpy(np.array(image)/255.0).permute(2, 0, 1).to(torch.float32)
-        label = torch.from_numpy(np.array(label)[:,:,0]).unsqueeze(0)
+        image = torch.from_numpy(np.array(image) / 255.0).permute(2, 0, 1).to(torch.float32)
+        label = torch.from_numpy(np.array(label)[:, :, 0]).unsqueeze(0)
 
         return image, label
 
@@ -47,9 +53,7 @@ if __name__ == '__main__':
     print(lab.shape)
     print(lab)
     import matplotlib.pyplot as plt
+
     lab_a = lab.numpy()
     plt.imshow(lab_a[0], cmap='gray')
     plt.show()
-
-
-
