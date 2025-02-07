@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from util import util
-from util.augmentation import SegmentationAugmentation, getAugmentationSetting
 from util.lossfunc import diceLoss
 from dataset.example_dataset import ExampleDataset
 from stdmodel.unet import UNet
@@ -36,27 +35,24 @@ METRICS_SIZE = 10
 
 
 class ExampleApp:
-    def __init__(self, args=None, is_test_run=True):
+    def __init__(self, args=None,):
         if not args:
             args = sys.argv[1:]
 
         self.args = util.parseArgs(args, self.__class__.__name__)
 
-        if not is_test_run:
-            self.time_str = datetime.now().strftime('%Y-%m-%d_%H.%M.%S')
-            self.trn_writer = None
-            self.val_writer = None
+        self.time_str = datetime.now().strftime('%Y-%m-%d_%H.%M.%S')
+        self.trn_writer = None
+        self.val_writer = None
 
-            self.augmentation_dict = getAugmentationSetting(self.args)
+        self.use_cuda = torch.cuda.is_available()
+        self.device = torch.device("cuda" if self.use_cuda else "cpu")
 
-            self.use_cuda = torch.cuda.is_available()
-            self.device = torch.device("cuda" if self.use_cuda else "cpu")
+        self.model = self.initModel()
+        self.optimizer = self.initOptimizer()
 
-            self.model, self.augmentation_model = self.initModel()
-            self.optimizer = self.initOptimizer()
-
-            self.validation_cadence = 5
-            self.totalTrainingSamples_count = 0
+        self.validation_cadence = 5
+        self.totalTrainingSamples_count = 0
 
     def initModel(self):
         model = UNet(
@@ -69,17 +65,13 @@ class ExampleApp:
             up_mode='upconv',
         )
 
-        augmentation_model = SegmentationAugmentation(**self.augmentation_dict)
-
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
             if torch.cuda.device_count() > 1:
                 model = nn.DataParallel(model)
-                augmentation_model = nn.DataParallel(augmentation_model)
             model = model.to(self.device)
-            augmentation_model = augmentation_model.to(self.device)
 
-        return model, augmentation_model
+        return model
 
 
     def initOptimizer(self):
@@ -128,7 +120,6 @@ class ExampleApp:
     def doTraining(self, epoch_ndx, train_dl):
         trnMetrics_g = torch.zeros(METRICS_SIZE, len(train_dl.dataset), device=self.device)
         self.model.train()
-        # train_dl.dataset.shuffleSamples()
 
         batch_iter = util.enumerateWithEstimate(
             train_dl,
@@ -168,9 +159,6 @@ class ExampleApp:
 
         input_g = input_t.to(self.device, non_blocking=True)
         label_g = label_t.to(self.device, non_blocking=True)
-
-        if self.model.training and self.augmentation_dict:
-            input_g, label_g = self.augmentation_model(input_g, label_g)
 
         prediction_g = self.model(input_g)
 
@@ -385,4 +373,4 @@ class ExampleApp:
 
 
 if __name__ == "__main__":
-    ExampleApp(is_test_run=False).run()
+    ExampleApp().run()

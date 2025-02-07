@@ -4,6 +4,7 @@ import os
 from PIL import Image
 import numpy as np
 from util.logconf import logging
+import util.augmentation as augmentation
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
@@ -39,8 +40,20 @@ class ExampleDataset(Dataset):
         image = Image.open(img_path)
         label = Image.open(label_path)
 
-        # PIL读取的图片默认是 H W C 形状，需要转换成 C H W
-        image = torch.from_numpy(np.array(image) / 255.0).permute(2, 0, 1).to(torch.float32)
+        # TODO: 后续将数据增强和数据转换分开，因为数据增强可以使用tensor类型并在GPU上运行，而数据转换只能使用PIL类型或者numpy类型
+        # 设置transform，数据预处理
+        image_transform = augmentation.get_transform(image.size, IsResize=True, IsTotensor=True, IsNormalize=True)
+        label_transform = augmentation.get_transform(image.size, IsResize=True, IsTotensor=False, IsNormalize=False)
+
+
+        # PIL读取的图片默认是 H W C 形状，需要转换成 C H W, 并且将像素值从[0,255]转换成[0,1]
+        # image = torch.from_numpy(np.array(image) / 255.0).permute(2, 0, 1).to(torch.float32)
+
+        # ToTensor能够将PIL和numpy格式的图片的数值范围从[0,255]->[0,1],且将图像形状从[H,W,C]->[C,H,W]
+        image = image_transform(image)
+
+        # label不能用ToTensor进行转换，因为label需要保持为整数才能做真值运算，而ToTensor会将其转换成浮点数
+        label = label_transform(label)
         label = torch.from_numpy(np.array(label)[:, :, 0]).unsqueeze(0)
 
         return image, label

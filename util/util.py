@@ -24,7 +24,8 @@ def parseArgs(args=None, appname=None):
                         )
     parser.add_argument('--num-workers',
                         help='Number of worker processes for background data loading',
-                        default=8,
+                        default=4,
+                        default=4,
                         type=int,
                         )
     parser.add_argument('--epochs',
@@ -48,31 +49,6 @@ def parseArgs(args=None, appname=None):
                         action='store_true',
                         default=False,
                         )
-    # parser.add_argument('--augment-flip',
-    #                     help="Augment the training data by randomly flipping the data left-right, up-down, and front-back.",
-    #                     action='store_true',
-    #                     default=False,
-    #                     )
-    # parser.add_argument('--augment-offset',
-    #                     help="Augment the training data by randomly offsetting the data slightly along the X and Y axes.",
-    #                     action='store_true',
-    #                     default=False,
-    #                     )
-    # parser.add_argument('--augment-scale',
-    #                     help="Augment the training data by randomly increasing or decreasing the size of the candidate.",
-    #                     action='store_true',
-    #                     default=False,
-    #                     )
-    # parser.add_argument('--augment-rotate',
-    #                     help="Augment the training data by randomly rotating the data around the head-foot axis.",
-    #                     action='store_true',
-    #                     default=False,
-    #                     )
-    # parser.add_argument('--augment-noise',
-    #                     help="Augment the training data by randomly adding noise to the data.",
-    #                     action='store_true',
-    #                     default=False,
-    #                     )
 
     return parser.parse_args(args)
 
