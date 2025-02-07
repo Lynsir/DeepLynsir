@@ -87,7 +87,7 @@ class ExampleApp:
         # return SGD(self.model.parameters(), lr=0.001, momentum=0.99)
 
     def initTrainDl(self):
-        trn_ds = ExampleDataset()
+        trn_ds = ExampleDataset(data_type='trn')
         batch_size = self.args.batch_size
         if self.use_cuda:
             batch_size *= torch.cuda.device_count()
@@ -103,7 +103,7 @@ class ExampleApp:
         return train_dl
 
     def initValDl(self):
-        val_ds = ExampleDataset()
+        val_ds = ExampleDataset(data_type='val')
         batch_size = self.args.batch_size
         if self.use_cuda:
             batch_size *= torch.cuda.device_count()
@@ -222,7 +222,7 @@ class ExampleApp:
 
             writer = getattr(self, mode_str + '_writer')
             writer.add_image(
-                f'{mode_str}/prediction_{ndx}:{dtset.datalines[ndx]}',
+                f'{mode_str}/prediction_{ndx}:    {dtset.datalines[ndx]}',
                 img_a,
                 self.totalTrainingSamples_count,
                 dataformats='HWC',
@@ -234,7 +234,7 @@ class ExampleApp:
                 img_a *= 0.5
                 img_a.clip(0, 1, img_a)
                 writer.add_image(
-                    f'{mode_str}/label_{ndx}:{dtset.datalines[ndx]}',
+                    f'{mode_str}/label_{ndx}:    {dtset.datalines[ndx]}',
                     img_a,
                     self.totalTrainingSamples_count,
                     dataformats='HWC',
@@ -305,6 +305,7 @@ class ExampleApp:
             'save',
             'models',
             self.args.tb_prefix,
+            self.time_str,
             '{}_{}_{}.{}.state'.format(
                 type_str,
                 self.time_str,
@@ -337,6 +338,7 @@ class ExampleApp:
             best_path = os.path.join(
                 'save', 'models',
                 self.args.tb_prefix,
+                self.time_str,
                 f'{type_str}_{self.time_str}_{self.args.comment}.best.state')
             shutil.copyfile(file_path, best_path)
 
