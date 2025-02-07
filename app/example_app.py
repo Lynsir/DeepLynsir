@@ -19,19 +19,22 @@ log = util.logging.getLogger(__name__)
 log.setLevel(util.logging.DEBUG)
 
 # Used for computeClassificationLoss and logMetrics to index into metrics_t/metrics_a
-# METRICS_LABEL_NDX = 0
+METRICS_LABEL_NDX = 0
 METRICS_LOSS_NDX = 1
-# METRICS_FN_LOSS_NDX = 2
-# METRICS_ALL_LOSS_NDX = 3
+METRICS_FN_LOSS_NDX = 2
+METRICS_ALL_LOSS_NDX = 3
 
-# METRICS_PTP_NDX = 4
-# METRICS_PFN_NDX = 5
-# METRICS_MFP_NDX = 6
+METRICS_PTP_NDX = 4
+METRICS_PFN_NDX = 5
+METRICS_MFP_NDX = 6
+
 METRICS_TP_NDX = 7
 METRICS_FN_NDX = 8
 METRICS_FP_NDX = 9
 
-METRICS_SIZE = 10
+METRICS_DSC_NDX = 10
+
+METRICS_SIZE = 11
 
 
 class ExampleApp:
@@ -173,6 +176,7 @@ class ExampleApp:
                                 > classificationThreshold).to(torch.float32)
 
             tp = (predictionBool_g * label_g).sum(dim=[1, 2, 3])
+            tn = ((1 - predictionBool_g) * (~label_g)).sum(dim=[1, 2, 3])
             fn = ((1 - predictionBool_g) * label_g).sum(dim=[1, 2, 3])
             fp = (predictionBool_g * (~label_g)).sum(dim=[1, 2, 3])
 
@@ -181,12 +185,15 @@ class ExampleApp:
             metrics_g[METRICS_FN_NDX, start_ndx:end_ndx] = fn
             metrics_g[METRICS_FP_NDX, start_ndx:end_ndx] = fp
 
+            # TODO:计算骰子系数并记录
+            # dice = 2TP/(FN+FP+2TP) = 2真阳性/(实际阳性(TP+FN)+预测阳性(TP+FP))
+
         # fnLoss_g是真阳性与实际阳性的骰子系数，如果他的值越小说明真阳越多
         # 在损失中加上8倍的这个值以惩罚阴性样本带来的影响，因为阴性的样本数量远多于阳性
         # 预测的阴性越多，说明真阳越少，惩罚就越大，损失就越大
         # 可以理解为阳性比阴性重要8倍，不管怎么优化阴性的正确率，损失始终不会降低太多
-        # return diceLoss_g.mean() + fnLoss_g.mean() * 8
-        return diceLoss_g.mean()
+        return diceLoss_g.mean() + fnLoss_g.mean() * 8
+        # return diceLoss_g.mean()
 
     def logImages(self, epoch_ndx, mode_str, dl):
         self.model.eval()
@@ -363,7 +370,7 @@ class ExampleApp:
                 score = self.logMetrics(epoch_ndx, 'val', valMetrics_t)
                 best_score = max(score, best_score)
 
-                self.saveModel('seg', epoch_ndx, score == best_score)
+                # self.saveModel('seg', epoch_ndx, score == best_score)
 
                 self.logImages(epoch_ndx, 'trn', train_dl)
                 self.logImages(epoch_ndx, 'val', val_dl)
