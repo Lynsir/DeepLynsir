@@ -2,7 +2,6 @@ import datetime
 import time
 import argparse
 import numpy as np
-from torchvision import transforms
 from util.logconf import logging
 
 log = logging.getLogger(__name__)
@@ -51,20 +50,6 @@ def parseArgs(args=None, appname=None):
 
     return parser.parse_args(args)
 
-
-
-def compute_mIoU(CM, ignore_index=None):
-    np.seterr(divide="ignore", invalid="ignore")
-    if ignore_index is not None:
-        CM = np.delete(CM, ignore_index, axis=0)
-        CM = np.delete(CM, ignore_index, axis=1)
-    intersection = np.diag(CM)
-    ground_truth_set = CM.sum(axis=1)
-    predicted_set = CM.sum(axis=0)
-    union = ground_truth_set + predicted_set - intersection
-    IoU = intersection / union.astype(np.float32)
-    mIoU = np.mean(IoU)
-    return mIoU
 
 
 def importstr(module_str, from_=None):
