@@ -38,7 +38,7 @@ class ExampleDataset(Dataset):
         img_path = label_path.replace("label", "image")
 
         image = Image.open(img_path)
-        label = Image.open(label_path)
+        label = Image.open(label_path).convert('L')
 
         # TODO: 后续将数据增强和数据转换分开，因为数据增强可以使用tensor类型并在GPU上运行，而数据转换只能使用PIL类型或者numpy类型
         # 设置transform，数据预处理
@@ -52,9 +52,10 @@ class ExampleDataset(Dataset):
         # ToTensor能够将PIL和numpy格式的图片的数值范围从[0,255]->[0,1],且将图像形状从[H,W,C]->[C,H,W]
         image = image_transform(image)
 
-        # label不能用ToTensor进行转换，因为label需要保持为整数才能做真值运算，而ToTensor会将其转换成浮点数
         label = label_transform(label)
-        label = torch.from_numpy(np.array(label)[:, :, 0]).unsqueeze(0)
+        # label不能用ToTensor进行转换，因为label需要保持为整数才能做真值运算，而ToTensor会将其转换成浮点数
+        # 标签形状为[H,W]，不需要通道
+        label = torch.from_numpy(np.array(label))
 
         return image, label
 
