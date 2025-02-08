@@ -204,11 +204,14 @@ class ExampleApp:
         for ndx in range(3):
             img_t, lab_t = dtset[ndx]
             img_g = img_t.to(self.device)
-            pred_g = self.model(img_g.unsqueeze(0))[0]
+            # 构造输出形状为[1,1,H,W]，并转换为H,W
+            pred_g = self.model(img_g.unsqueeze(0))[0,0]
+            pred_g = F.sigmoid(pred_g)
 
-            pred_a = pred_g.detach().cpu().numpy()[0]>0.5
-            lab_a = lab_t.numpy()[0]>0.5
+            pred_a = pred_g.detach().cpu().numpy()>0.5
+            lab_a = lab_t.numpy()>0.5
 
+            # 转换成H,W,C
             img_a = img_t.numpy().transpose(1,2,0)
             # 假阳性修改为红色，0通道表示R
             img_a[:, :, 0] += pred_a & (1 - lab_a)
