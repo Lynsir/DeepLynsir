@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -164,6 +165,8 @@ class ExampleApp:
         label_g = label_t.to(self.device, non_blocking=True)
 
         prediction_g = self.model(input_g)
+        # 对输出的logits做sigmoid变换成概率
+        prediction_g = F.sigmoid(prediction_g)
 
         diceLoss_g = diceLoss(prediction_g, label_g)
         fnLoss_g = diceLoss(prediction_g * label_g, label_g)
