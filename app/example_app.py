@@ -6,15 +6,14 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim import SGD, Adam
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from util import util
-from util.lossfunc import diceLoss
+from paper.lossfunc import diceLoss
 from dataset.example_dataset import ExampleDataset
-from stdmodel.unet import UNet
+from paper.unet import UNet
 
 log = util.logging.getLogger(__name__)
 log.setLevel(util.logging.DEBUG)
@@ -22,20 +21,21 @@ log.setLevel(util.logging.DEBUG)
 # Used for computeClassificationLoss and logMetrics to index into metrics_t/metrics_a
 METRICS_LABEL_NDX = 0
 METRICS_LOSS_NDX = 1
-METRICS_FN_LOSS_NDX = 2
-METRICS_ALL_LOSS_NDX = 3
+# METRICS_FN_LOSS_NDX = 2
+# METRICS_ALL_LOSS_NDX = 3
 
-METRICS_PTP_NDX = 4
-METRICS_PFN_NDX = 5
-METRICS_MFP_NDX = 6
+# METRICS_PTP_NDX = 4
+# METRICS_PFN_NDX = 5
+# METRICS_MFP_NDX = 6
 
 METRICS_TP_NDX = 7
 METRICS_FN_NDX = 8
 METRICS_FP_NDX = 9
+METRICS_TN_NDX = 10
 
-METRICS_DSC_NDX = 10
+METRICS_DSC_NDX = 11
 
-METRICS_SIZE = 11
+METRICS_SIZE = 12
 
 
 class ExampleApp:
@@ -75,7 +75,7 @@ class ExampleApp:
                 model = nn.DataParallel(model)
             model = model.to(self.device)
 
-        return model
+        return nn.Sequential(model, nn.Sigmoid())
 
 
     def initOptimizer(self):
@@ -165,8 +165,6 @@ class ExampleApp:
         label_g = label_t.to(self.device, non_blocking=True)
 
         prediction_g = self.model(input_g)
-        # 对输出的logits做sigmoid变换成概率
-        prediction_g = F.sigmoid(prediction_g)
 
         diceLoss_g = diceLoss(prediction_g, label_g)
         fnLoss_g = diceLoss(prediction_g * label_g, label_g)
@@ -178,6 +176,7 @@ class ExampleApp:
             predictionBool_g = (prediction_g[:, 0:1]
                                 > classificationThreshold).to(torch.float32)
 
+            # 对除了批次外的所有维度求和，能适应不同结构的数据，比如二维的图像，三维的形体
             tp = (predictionBool_g * label_g).sum(dim=[1, 2, 3])
             tn = ((1 - predictionBool_g) * (~label_g)).sum(dim=[1, 2, 3])
             fn = ((1 - predictionBool_g) * label_g).sum(dim=[1, 2, 3])
@@ -185,8 +184,10 @@ class ExampleApp:
 
             metrics_g[METRICS_LOSS_NDX, start_ndx:end_ndx] = diceLoss_g
             metrics_g[METRICS_TP_NDX, start_ndx:end_ndx] = tp
+            metrics_g[METRICS_TN_NDX, start_ndx:end_ndx] = tn
             metrics_g[METRICS_FN_NDX, start_ndx:end_ndx] = fn
             metrics_g[METRICS_FP_NDX, start_ndx:end_ndx] = fp
+
 
             # TODO:计算骰子系数并记录
             # dice = 2TP/(FN+FP+2TP) = 2真阳性/(实际阳性(TP+FN)+预测阳性(TP+FP))
@@ -195,8 +196,8 @@ class ExampleApp:
         # 在损失中加上8倍的这个值以惩罚阴性样本带来的影响，因为阴性的样本数量远多于阳性
         # 预测的阴性越多，说明真阳越少，惩罚就越大，损失就越大
         # 可以理解为阳性比阴性重要8倍，不管怎么优化阴性的正确率，损失始终不会降低太多
-        return diceLoss_g.mean() + fnLoss_g.mean() * 8
-        # return diceLoss_g.mean()
+        # return diceLoss_g.mean() + fnLoss_g.mean() * 8
+        return diceLoss_g.mean()
 
     def logImages(self, epoch_ndx, mode_str, dl):
         self.model.eval()
@@ -206,7 +207,6 @@ class ExampleApp:
             img_g = img_t.to(self.device)
             # 构造输出形状为[1,1,H,W]，并转换为H,W
             pred_g = self.model(img_g.unsqueeze(0))[0,0]
-            pred_g = F.sigmoid(pred_g)
 
             pred_a = pred_g.detach().cpu().numpy()>0.5
             lab_a = lab_t.numpy()>0.5
@@ -252,12 +252,16 @@ class ExampleApp:
         sum_a = metrics_a.sum(axis=1)
         assert np.isfinite(metrics_a).all()
 
-        allLabel_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_FN_NDX]
+        allPos_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_FN_NDX]
+        allNeg_count = sum_a[METRICS_TN_NDX] + sum_a[METRICS_FP_NDX]
+        all_count = allPos_count + allNeg_count
+        tptn_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_TN_NDX]
 
         metrics_dict = {'loss/all': metrics_a[METRICS_LOSS_NDX].mean(),
-                        'percent_all/tp': sum_a[METRICS_TP_NDX] / (allLabel_count or 1) * 100,
-                        'percent_all/fn': sum_a[METRICS_FN_NDX] / (allLabel_count or 1) * 100,
-                        'percent_all/fp': sum_a[METRICS_FP_NDX] / (allLabel_count or 1) * 100}
+                        'percent_all/acc': tptn_count / (all_count or 1) * 100,
+                        'percent_all/tp': sum_a[METRICS_TP_NDX] / (allPos_count or 1) * 100,
+                        'percent_all/tn': sum_a[METRICS_TN_NDX] / (allNeg_count or 1) * 100,
+                        }
 
         precision = metrics_dict['pr/precision'] = sum_a[METRICS_TP_NDX] \
                                                    / ((sum_a[METRICS_TP_NDX] + sum_a[METRICS_FP_NDX]) or 1)
@@ -279,7 +283,7 @@ class ExampleApp:
         ))
         log.info(("E{} {:8} "
                   + "{loss/all:.4f} loss, "
-                  + "{percent_all/tp:-5.1f}% tp, {percent_all/fn:-5.1f}% fn, {percent_all/fp:-9.1f}% fp"
+                  + "{percent_all/acc:-5.1f}% ACC, {percent_all/tp:-5.1f}% TP, {percent_all/tn:-5.1f}% TN"
                   ).format(
             epoch_ndx,
             mode_str + '_all',
@@ -297,6 +301,7 @@ class ExampleApp:
 
         writer.flush()
 
+        # TODO: 这里使用召回率作为得分， 后续可以修改为其他指标
         score = metrics_dict['pr/recall']
 
         return score
