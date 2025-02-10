@@ -116,7 +116,7 @@ class ExampleApp:
 
     def initTensorboardWriters(self):
         if self.trn_writer is None:
-            log_dir = os.path.join('runs', self.args.tb_prefix, self.time_str)
+            log_dir = os.path.join(os.path.dirname(__file__), "..", 'runs', self.args.tb_prefix, self.time_str)
 
             self.trn_writer = SummaryWriter(log_dir=log_dir + '_trn_seg_' + self.args.comment)
             self.val_writer = SummaryWriter(log_dir=log_dir + '_val_seg_' + self.args.comment)
@@ -197,7 +197,8 @@ class ExampleApp:
         # 预测的阴性越多，说明真阳越少，惩罚就越大，损失就越大
         # 可以理解为阳性比阴性重要8倍，不管怎么优化阴性的正确率，损失始终不会降低太多
         # return diceLoss_g.mean() + fnLoss_g.mean() * 8
-        return diceLoss_g.mean()
+        return diceLoss_g.mean() + fnLoss_g.mean() * 0
+        # return diceLoss_g.mean()
 
     def logImages(self, epoch_ndx, mode_str, dl):
         self.model.eval()
@@ -211,12 +212,16 @@ class ExampleApp:
             pred_a = pred_g.detach().cpu().numpy()>0.5
             lab_a = lab_t.numpy()>0.5
 
+            # TODO：输出TP,FN,FP,TN等数据观察
+
             # 转换成H,W,C
             img_a = img_t.numpy().transpose(1,2,0)
             # 假阳性修改为红色，0通道表示R
             img_a[:, :, 0] += pred_a & (1 - lab_a)
             # 真阳性修改为绿色，1通道表示G
             img_a[:, :, 1] += pred_a & lab_a
+            # 假阴性修改为蓝色，2通道表示B
+            img_a[:, :, 2] += (1 - pred_a) & lab_a
 
             img_a *= 0.5
             img_a.clip(0, 1, img_a)
@@ -225,7 +230,7 @@ class ExampleApp:
             writer.add_image(
                 f'{mode_str}/prediction_{ndx}:    {dtset.datalines[ndx]}',
                 img_a,
-                self.totalTrainingSamples_count,
+                epoch_ndx,
                 dataformats='HWC',
             )
 
@@ -237,7 +242,7 @@ class ExampleApp:
                 writer.add_image(
                     f'{mode_str}/label_{ndx}:    {dtset.datalines[ndx]}',
                     img_a,
-                    self.totalTrainingSamples_count,
+                    epoch_ndx,
                     dataformats='HWC',
                 )
 
@@ -275,7 +280,7 @@ class ExampleApp:
                   + "{loss/all:.4f} loss, "
                   + "{pr/precision:.4f} precision, "
                   + "{pr/recall:.4f} recall, "
-                  + "{pr/f1_score:.4f} f1 score"
+                  + "{pr/f1_score:.4f} f1"
                   ).format(
             epoch_ndx,
             mode_str,
@@ -391,4 +396,4 @@ class ExampleApp:
 
 
 if __name__ == "__main__":
-    ExampleApp().run()
+    ExampleApp("--batch-size 1").run()
