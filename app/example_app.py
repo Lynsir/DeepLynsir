@@ -59,11 +59,10 @@ class ExampleApp:
         self.totalTrainingSamples_count = 0
 
     def initModel(self):
+        # 使用标准U-net结构，五层深度，每层64个通道
         model = UNet(
             in_channels=3,
             n_classes=1,
-            depth=4,
-            wf=4,
             padding=True,
             batch_norm=True,
             up_mode='upconv',
@@ -173,14 +172,14 @@ class ExampleApp:
         end_ndx = start_ndx + input_t.size(0)
 
         with torch.no_grad():
-            predictionBool_g = (prediction_g[:, 0:1]
-                                > classificationThreshold).to(torch.float32)
+            # fix:原来使用的是prediction_g[:, 0:1]切片产生的形状是[B,1,H,W]，导致后续的计算会出错，修正后的形状是[B,H,W]
+            predictionBool_g = (prediction_g[:, 0] > classificationThreshold).to(torch.float32)
 
-            # 对除了批次外的所有维度求和，能适应不同结构的数据，比如二维的图像，三维的形体
-            tp = (predictionBool_g * label_g).sum(dim=[1, 2, 3])
-            tn = ((1 - predictionBool_g) * (~label_g)).sum(dim=[1, 2, 3])
-            fn = ((1 - predictionBool_g) * label_g).sum(dim=[1, 2, 3])
-            fp = (predictionBool_g * (~label_g)).sum(dim=[1, 2, 3])
+            # 对最后两个维度求和, 因为是二维图像
+            tp = (predictionBool_g * label_g).sum(dim=[-1, -2])
+            tn = ((1 - predictionBool_g) * (~label_g)).sum(dim=[-1, -2])
+            fn = ((1 - predictionBool_g) * label_g).sum(dim=[-1, -2])
+            fp = (predictionBool_g * (~label_g)).sum(dim=[-1, -2])
 
             metrics_g[METRICS_LOSS_NDX, start_ndx:end_ndx] = diceLoss_g
             metrics_g[METRICS_TP_NDX, start_ndx:end_ndx] = tp
@@ -212,10 +211,22 @@ class ExampleApp:
             pred_a = pred_g.detach().cpu().numpy()>0.5
             lab_a = lab_t.numpy()>0.5
 
-            # TODO：输出TP,FN,FP,TN等数据观察
+            # 监测数据使用
+            # P = lab_a.sum()
+            # N = (~lab_a).sum()
+            # TP = (pred_a & lab_a).sum()
+            # TN = (~pred_a & ~lab_a).sum()
+            # FP = (pred_a & ~lab_a).sum()
+            # FN = (~pred_a & lab_a).sum()
+            #
+            # log.info(f"E{epoch_ndx} {mode_str} "
+            #          f"TP:{TP}/{P}={TP / P :.2%} "
+            #          f"TN:{TN}/{N}={TN / N:.2%} "
+            #          f"ACC:{(TP + TN) / (P + N):.2%} "
+            #          f"DSC:{(2 * TP) / (2*TP + FN + FP):.2%}")
 
             # 转换成H,W,C
-            img_a = img_t.numpy().transpose(1,2,0)
+            img_a = img_t.numpy().copy().transpose(1,2,0)
             # 假阳性修改为红色，0通道表示R
             img_a[:, :, 0] += pred_a & (1 - lab_a)
             # 真阳性修改为绿色，1通道表示G
@@ -235,7 +246,10 @@ class ExampleApp:
             )
 
             if epoch_ndx == 1:
-                img_a = img_t.numpy().transpose(1, 2, 0)
+                # fix: 修复标签图像变红问题
+                # 原因：由于img_t底层内存共享数据，上面修改img_a会影响img_t，导致下面的img_a获取的是修改后的数据
+                # 解决方法：调用numpy的copy方法，创建一个新的内存空间，避免共享数据
+                img_a = img_t.numpy().copy().transpose(1, 2, 0)
                 img_a[:, :, 1] += lab_a  # Green
                 img_a *= 0.5
                 img_a.clip(0, 1, img_a)
@@ -260,10 +274,10 @@ class ExampleApp:
         allPos_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_FN_NDX]
         allNeg_count = sum_a[METRICS_TN_NDX] + sum_a[METRICS_FP_NDX]
         all_count = allPos_count + allNeg_count
-        tptn_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_TN_NDX]
+        true_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_TN_NDX]
 
         metrics_dict = {'loss/all': metrics_a[METRICS_LOSS_NDX].mean(),
-                        'percent_all/acc': tptn_count / (all_count or 1) * 100,
+                        'percent_all/acc': true_count / (all_count or 1) * 100,
                         'percent_all/tp': sum_a[METRICS_TP_NDX] / (allPos_count or 1) * 100,
                         'percent_all/tn': sum_a[METRICS_TN_NDX] / (allNeg_count or 1) * 100,
                         }
@@ -360,7 +374,7 @@ class ExampleApp:
 
     def run(self):
 
-        log.info("Starting {}, {}".format(type(self).__name__, self.args))
+        log.info("Starting {}\n\t\t{}".format(type(self).__name__, self.args))
 
         train_dl = self.initTrainDl()
         val_dl = self.initValDl()
@@ -396,4 +410,4 @@ class ExampleApp:
 
 
 if __name__ == "__main__":
-    ExampleApp("--batch-size 1").run()
+    ExampleApp("--epochs 1 --batch-size 3 test_from_pyfile").run()
