@@ -172,6 +172,7 @@ class ExampleApp:
         return loss_g.mean() + fnLoss_g.mean() * 0
 
     def computeMetrics(self, label_g, prediction_g, start_ndx, length, loss_g, metrics_g):
+        # TODO：可使用sklearn.metrics.confusion_matrix计算混淆矩阵，后续再做
         start_ndx = start_ndx
         end_ndx = start_ndx + length
 
