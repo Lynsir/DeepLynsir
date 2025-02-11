@@ -155,12 +155,12 @@ class ExampleApp:
         input_t, label_t = batch_tup
 
         input_g = input_t.to(self.device, non_blocking=True)
-        label_g = label_t.to(self.device, non_blocking=True)
+        label_g = label_t.to(self.device, non_blocking=True).float()
 
         prediction_g = self.model(input_g)
 
-        loss_g = self.criterion(prediction_g, label_g)
-        fnLoss_g = self.criterion(prediction_g * label_g, label_g)
+        loss_g = self.criterion(prediction_g.squeeze(dim=1), label_g)
+        fnLoss_g = self.criterion(prediction_g.squeeze(dim=1) * label_g, label_g)
 
         self.computeMetrics(label_g, prediction_g, batch_ndx * self.batch_size, len(input_t), loss_g, metrics_g)
 
@@ -178,12 +178,14 @@ class ExampleApp:
 
         with torch.no_grad():
             # fix:原来使用的是prediction_g[:, 0:1]切片产生的形状是[B,1,H,W]，导致后续的计算会出错，修正后的形状是[B,H,W]
-            predictionBool_g = (prediction_g[:, 0] > self.classificationThreshold).to(torch.float32)
+            predictionBool_g = (prediction_g.squeeze(dim=1) > self.classificationThreshold)
+            # 为保证布尔运算的正常，需要将prediction_g和label_g转换成布尔类型
+            label_g = label_g.to(torch.bool)
 
             # 对最后两个维度求和, 因为是二维图像
             tp = (predictionBool_g * label_g).sum(dim=[-1, -2])
-            tn = ((1 - predictionBool_g) * (~label_g)).sum(dim=[-1, -2])
-            fn = ((1 - predictionBool_g) * label_g).sum(dim=[-1, -2])
+            tn = ((~predictionBool_g) * (~label_g)).sum(dim=[-1, -2])
+            fn = ((~predictionBool_g) * label_g).sum(dim=[-1, -2])
             fp = (predictionBool_g * (~label_g)).sum(dim=[-1, -2])
 
             metrics_g[METRICS_LOSS_NDX, start_ndx:end_ndx] = loss_g
@@ -192,10 +194,10 @@ class ExampleApp:
             metrics_g[METRICS_FN_NDX, start_ndx:end_ndx] = fn
             metrics_g[METRICS_FP_NDX, start_ndx:end_ndx] = fp
             # 计算Dice系数
-            metrics_g[METRICS_DSC_NDX, start_ndx:end_ndx] = 2 * tp / (2 * tp + fn + fp)
+            metrics_g[METRICS_DSC_NDX, start_ndx:end_ndx] = (2 * tp) / (2 * tp + fn + fp + 1)
 
     def logMetrics(self, epoch_ndx, mode_str, metrics_t):
-        log.info("E{} {}".format(epoch_ndx, type(self).__name__, ))
+        log.info("E{} {} logMetrics".format(epoch_ndx, type(self).__name__, ))
 
         metrics_a = metrics_t.detach().numpy()
         sum_a = metrics_a.sum(axis=1)
