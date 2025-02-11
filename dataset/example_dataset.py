@@ -23,8 +23,8 @@ class ExampleDataset(Dataset):
             self.source = os.path.join(self.root, "data/list/test.txt")
 
         with open(self.source, "r") as f:
-            # 从文件中读取行默认结尾有一个'\n', 直接切片或者split都可以
-            self.datalines = [dt[:-1] for dt in f.readlines()]
+            # 从文件中读取行默认结尾有一个'\n', strip或者split都可以(不推荐使用切片)
+            self.datalines = [dt.strip() for dt in f.readlines()]
 
         log.info("{} {} samples".format( len(self.datalines), data_type))
 
