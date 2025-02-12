@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -54,7 +55,7 @@ class ExampleApp:
         self.batch_size = self.args.batch_size * torch.cuda.device_count() if self.use_cuda else self.args.batch_size
 
         self.model = self.initModel()
-        self.criterion = self.initCriterion("BCELoss")
+        self.criterion = nn.CrossEntropyLoss()
         self.optimizer = self.initOptimizer()
 
         self.classificationThreshold = 0.5
@@ -65,7 +66,7 @@ class ExampleApp:
         # 使用标准U-net结构，五层深度，每层64个通道
         model = UNet(
             in_channels=3,
-            n_classes=1,
+            n_classes=2,
             padding=True,
             batch_norm=True,
             up_mode='upconv',
@@ -97,7 +98,7 @@ class ExampleApp:
         # return SGD(self.model.parameters(), lr=0.001, momentum=0.99)
 
     def initDataLoader(self, data_type="trn"):
-        ds = ExampleDataset(data_type='trn')
+        ds = ExampleDataset(data_type=data_type)
         shuffle = True if data_type == 'trn' else False
 
         return DataLoader(
@@ -155,21 +156,15 @@ class ExampleApp:
         input_t, label_t = batch_tup
 
         input_g = input_t.to(self.device, non_blocking=True)
-        label_g = label_t.to(self.device, non_blocking=True).float()
+        label_g = label_t.to(self.device, non_blocking=True)
 
         prediction_g = self.model(input_g)
 
-        loss_g = self.criterion(prediction_g.squeeze(dim=1), label_g)
-        fnLoss_g = self.criterion(prediction_g.squeeze(dim=1) * label_g, label_g)
+        loss_g = self.criterion(prediction_g, label_g.long())
 
         self.computeMetrics(label_g, prediction_g, batch_ndx * self.batch_size, len(input_t), loss_g, metrics_g)
 
-        # fnLoss_g是真阳性与实际阳性的骰子系数，如果他的值越小说明真阳越多
-        # 在损失中加上8倍的这个值以惩罚阴性样本带来的影响，因为阴性的样本数量远多于阳性
-        # 预测的阴性越多，说明真阳越少，惩罚就越大，损失就越大
-        # 可以理解为阳性比阴性重要8倍，不管怎么优化阴性的正确率，损失始终不会降低太多
-        # return loss_g.mean() + fnLoss_g.mean() * 8
-        return loss_g.mean() + fnLoss_g.mean() * 0
+        return loss_g.mean()
 
     def computeMetrics(self, label_g, prediction_g, start_ndx, length, loss_g, metrics_g):
         # TODO：可使用sklearn.metrics.confusion_matrix计算混淆矩阵，后续再做
@@ -177,16 +172,16 @@ class ExampleApp:
         end_ndx = start_ndx + length
 
         with torch.no_grad():
-            # fix:原来使用的是prediction_g[:, 0:1]切片产生的形状是[B,1,H,W]，导致后续的计算会出错，修正后的形状是[B,H,W]
-            predictionBool_g = (prediction_g.squeeze(dim=1) > self.classificationThreshold)
+            # 利用softmax计算出预测张量两个通道（分别代表两个类）中像素分类的概率，然后选取概率大的通道标号组成新的预测结果
             # 为保证布尔运算的正常，需要将prediction_g和label_g转换成布尔类型
-            label_g = label_g.to(torch.bool)
+            predictionBool_g = torch.argmax(F.softmax(prediction_g, dim=1), dim=1).to(torch.bool)
+            labelBool_g = label_g.to(torch.bool)
 
             # 对最后两个维度求和, 因为是二维图像
-            tp = (predictionBool_g * label_g).sum(dim=[-1, -2])
-            tn = ((~predictionBool_g) * (~label_g)).sum(dim=[-1, -2])
-            fn = ((~predictionBool_g) * label_g).sum(dim=[-1, -2])
-            fp = (predictionBool_g * (~label_g)).sum(dim=[-1, -2])
+            tp = (predictionBool_g * labelBool_g).sum(dim=[-1, -2])
+            tn = ((~predictionBool_g) * (~labelBool_g)).sum(dim=[-1, -2])
+            fn = ((~predictionBool_g) * labelBool_g).sum(dim=[-1, -2])
+            fp = (predictionBool_g * (~labelBool_g)).sum(dim=[-1, -2])
 
             metrics_g[METRICS_LOSS_NDX, start_ndx:end_ndx] = loss_g
             metrics_g[METRICS_TP_NDX, start_ndx:end_ndx] = tp
@@ -255,11 +250,11 @@ class ExampleApp:
         for ndx in range(3):
             img_t, lab_t = dtset[ndx]
             img_g = img_t.to(self.device)
-            # 构造输出形状为[1,1,H,W]，并转换为H,W
-            pred_g = self.model(img_g.unsqueeze(0))[0, 0]
+            # 构造输出形状为[1,2,H,W]
+            pred_g = self.model(img_g.unsqueeze(0))
 
-            pred_a = pred_g.detach().cpu().numpy() > self.classificationThreshold
-            lab_a = lab_t.numpy() > self.classificationThreshold
+            pred_a = torch.argmax(F.softmax(pred_g, dim=1), dim=1).squeeze(0).detach().cpu().numpy()
+            lab_a = lab_t.numpy()
 
             # 转换成H,W,C
             img_a = img_t.numpy().copy().transpose(1, 2, 0)
