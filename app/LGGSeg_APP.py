@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from util import util
-from dataset.example_dataset import ExampleDataset
+from dataset.LGGSeg_Dataset import LGGSegDataset
 from paper.unet import UNet
 
 log = util.logging.getLogger(__name__)
@@ -38,7 +38,7 @@ METRICS_DSC_NDX = 11
 METRICS_SIZE = 12
 
 
-class ExampleApp:
+class LGGSegAPP:
     def __init__(self, args=None, ):
         if not args:
             args = sys.argv[1:]
@@ -97,7 +97,7 @@ class ExampleApp:
         # return SGD(self.model.parameters(), lr=0.001, momentum=0.99)
 
     def initDataLoader(self, data_type="trn"):
-        ds = ExampleDataset(data_type=data_type)
+        ds = LGGSegDataset(data_type=data_type)
         shuffle = True if data_type == 'trn' else False
 
         return DataLoader(
@@ -360,4 +360,4 @@ class ExampleApp:
 
 
 if __name__ == "__main__":
-    ExampleApp("--epochs 1 --batch-size 3 test_from_pyfile").run()
+    LGGSegAPP("--epochs 1 --batch-size 3 test_from_pyfile").run()

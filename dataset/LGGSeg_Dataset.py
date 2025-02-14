@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import os
 import numpy as np
-import tqdm
+from tqdm import tqdm
 from glob import glob
 from sklearn.model_selection import train_test_split
 from PIL import Image
@@ -11,10 +11,11 @@ from util import augmentation
 from util.logconf import logging
 log = logging.getLogger(__name__)
 
+ds_path = r"F:\Datasets\Brain MRI segmentation (LGG Segmentation Dataset) by Mateusz Buda"
 
 class LGGSegDataset(Dataset):
     def __init__(self, data_type='trn', is_create=False):
-        self.root = r"F:\Projects\Datasets\Brain MRI segmentation (LGG Segmentation Dataset) by Mateusz Buda"
+        self.root = ds_path
 
         self.__class__.createLGGSegDatasetFiles(self.root) if is_create else None
 
@@ -74,16 +75,16 @@ class LGGSegDataset(Dataset):
             val_list += glob(os.path.join(p, r"*mask*.tif"))
 
         with open(os.path.join(root, "trn.txt"), "w") as f:
-            for p in tqdm:
+            for p in tqdm(trn_list):
                 f.write(p + "\n")
 
         with open(os.path.join(root, "val.txt"), "w") as f:
-            for p in val_list:
+            for p in tqdm(val_list):
                 f.write(p + "\n")
 
         print("Dataset files are created successfully.")
 
 
 if __name__ == '__main__':
-    LGGSegDataset.createLGGSegDatasetFiles(r"F:\Projects\Datasets\Brain MRI segmentation (LGG Segmentation Dataset) by Mateusz Buda")
+    LGGSegDataset.createLGGSegDatasetFiles(ds_path)
 
