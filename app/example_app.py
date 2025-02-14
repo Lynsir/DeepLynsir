@@ -58,7 +58,6 @@ class ExampleApp:
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = self.initOptimizer()
 
-        self.classificationThreshold = 0.5
         self.validation_cadence = 5
         self.totalTrnSamples_count = 0
 
