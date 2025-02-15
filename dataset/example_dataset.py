@@ -14,13 +14,13 @@ log.setLevel(logging.DEBUG)
 
 class ExampleDataset(Dataset):
     def __init__(self, data_type='trn'):
-        self.root = r"F:\Projects\UNet"
+        self.root = r"."
         if data_type.lower() == 'trn':
-            self.source = os.path.join(self.root, "data/list/train.txt")
+            self.source = os.path.join(self.root, "data/train.txt")
         elif data_type.lower() == 'val':
-            self.source = os.path.join(self.root, "data/list/val.txt")
+            self.source = os.path.join(self.root, "data/val.txt")
         elif data_type.lower() == 'tst':
-            self.source = os.path.join(self.root, "data/list/test.txt")
+            self.source = os.path.join(self.root, "data/test.txt")
 
         with open(self.source, "r") as f:
             # 从文件中读取行默认结尾有一个'\n', strip或者split都可以(不推荐使用切片)
