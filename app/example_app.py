@@ -120,7 +120,8 @@ class ExampleApp:
         trnMetrics_g = torch.zeros(METRICS_SIZE, len(train_dl.dataset), device=self.device)
         self.model.train()
 
-        for batch_ndx, batch_tup in tqdm(train_dl, desc=f"Training Epoch {epoch_ndx}"):
+        for batch_ndx, batch_tup in tqdm(enumerate(train_dl), ncols=100, total=len(train_dl),
+                                         desc=f"Training Epoch {epoch_ndx}", unit='batch'):
             self.optimizer.zero_grad()
 
             loss_var = self.computeBatchLoss(batch_ndx, batch_tup, trnMetrics_g)
@@ -137,7 +138,8 @@ class ExampleApp:
             valMetrics_g = torch.zeros(METRICS_SIZE, len(val_dl.dataset), device=self.device)
             self.model.eval()
 
-            for batch_ndx, batch_tup in tqdm(val_dl, desc=f"Validation Epoch {epoch_ndx}"):
+            for batch_ndx, batch_tup in tqdm(enumerate(val_dl), total=len(val_dl), ncols=100,
+                                             desc=f"Validation Epoch {epoch_ndx}", unit='batch'):
                 self.computeBatchLoss(batch_ndx, batch_tup, valMetrics_g)
 
         return self.logMetrics(epoch_ndx, 'val', valMetrics_g.to('cpu'))
@@ -350,4 +352,5 @@ class ExampleApp:
 
 
 if __name__ == "__main__":
-    ExampleApp("--epochs 1 --batch-size 3 test_from_pyfile").run()
+    #  python -m app.example_app --epochs=1 --batch-size=8 test
+    ExampleApp().run()
