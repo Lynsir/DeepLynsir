@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 from util import util
 from dataset.example_dataset import ExampleDataset
@@ -119,12 +120,7 @@ class ExampleApp:
         trnMetrics_g = torch.zeros(METRICS_SIZE, len(train_dl.dataset), device=self.device)
         self.model.train()
 
-        batch_iter = util.enumerateWithEstimate(
-            train_dl,
-            "E{} Training".format(epoch_ndx),
-            start_ndx=train_dl.num_workers,
-        )
-        for batch_ndx, batch_tup in batch_iter:
+        for batch_ndx, batch_tup in tqdm(train_dl, desc=f"Training Epoch {epoch_ndx}"):
             self.optimizer.zero_grad()
 
             loss_var = self.computeBatchLoss(batch_ndx, batch_tup, trnMetrics_g)
@@ -141,12 +137,7 @@ class ExampleApp:
             valMetrics_g = torch.zeros(METRICS_SIZE, len(val_dl.dataset), device=self.device)
             self.model.eval()
 
-            batch_iter = util.enumerateWithEstimate(
-                val_dl,
-                "E{} Validation ".format(epoch_ndx),
-                start_ndx=val_dl.num_workers,
-            )
-            for batch_ndx, batch_tup in batch_iter:
+            for batch_ndx, batch_tup in tqdm(val_dl, desc=f"Validation Epoch {epoch_ndx}"):
                 self.computeBatchLoss(batch_ndx, batch_tup, valMetrics_g)
 
         return self.logMetrics(epoch_ndx, 'val', valMetrics_g.to('cpu'))
