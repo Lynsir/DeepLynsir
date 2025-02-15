@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 from util import util
 from dataset.LGGSeg_Dataset import LGGSegDataset
@@ -124,7 +125,7 @@ class LGGSegAPP:
             "E{} Training".format(epoch_ndx),
             start_ndx=train_dl.num_workers,
         )
-        for batch_ndx, batch_tup in batch_iter:
+        for batch_ndx, batch_tup in tqdm(train_dl, desc=f"Training Epoch {epoch_ndx}"):
             self.optimizer.zero_grad()
 
             loss_var = self.computeBatchLoss(batch_ndx, batch_tup, trnMetrics_g)
@@ -146,7 +147,7 @@ class LGGSegAPP:
                 "E{} Validation ".format(epoch_ndx),
                 start_ndx=val_dl.num_workers,
             )
-            for batch_ndx, batch_tup in batch_iter:
+            for batch_ndx, batch_tup in tqdm(val_dl, desc=f"Validation Epoch {epoch_ndx}"):
                 self.computeBatchLoss(batch_ndx, batch_tup, valMetrics_g)
 
         return self.logMetrics(epoch_ndx, 'val', valMetrics_g.to('cpu'))
@@ -188,7 +189,7 @@ class LGGSegAPP:
             metrics_g[METRICS_FN_NDX, start_ndx:end_ndx] = fn
             metrics_g[METRICS_FP_NDX, start_ndx:end_ndx] = fp
             # 计算Dice系数
-            metrics_g[METRICS_DSC_NDX, start_ndx:end_ndx] = (2 * tp) / (2 * tp + fn + fp + 1)
+            metrics_g[METRICS_DSC_NDX, start_ndx:end_ndx] = (2 * tp) / (2 * tp + fn + fp + 0.0001)
 
     def logMetrics(self, epoch_ndx, mode_str, metrics_t):
         log.info("E{} {} logMetrics".format(epoch_ndx, type(self).__name__, ))
@@ -223,8 +224,11 @@ class LGGSegAPP:
                   + "{pr/f1_score:.4f} f1"
                   ).format(epoch_ndx, mode_str, **metrics_dict, ))
         log.info(("E{} {:8} "
-                  + "{loss/all:.4f} loss, {loss/dsc_score:.4f} dsc_score, "
-                  + "{percent_all/acc:-5.1f}% ACC, {percent_all/tp:-5.1f}% TP, {percent_all/tn:-5.1f}% TN"
+                  + "{loss/all:.4f} loss, "
+                    "{loss/dsc_score:.4f} dsc_score, "
+                  + "{percent_all/acc:-5.1f}% ACC, "
+                    "{percent_all/tp:-5.1f}% TP, "
+                    "{percent_all/tn:-5.1f}% TN"
                   ).format(epoch_ndx, mode_str + '_all', **metrics_dict, ))
 
         self.initTensorboardWriters()
