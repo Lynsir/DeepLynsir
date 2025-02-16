@@ -50,6 +50,7 @@ def parseArgs(args=None, appname=None):
 
     return parser.parse_args(args)
 
+# -------------------------------------------------------------------------------
 
 def importstr(module_str, from_=None):
     """
@@ -93,6 +94,27 @@ class AverageMeter(object):
 
 
 # -------------------------------------------------------------------------------
+
+def showMetrics(epoch_ndx, mode_str, metrics_dict):
+    log.info(("E{} {:5} "
+              + "{loss/all:.4f} LOSS, "
+              + "{loss/dsc_score:.4f} DSC, "
+              + "{loss/iou_score:.4f} IOU"
+              ).format(epoch_ndx, mode_str, **metrics_dict, ))
+    log.info(("E{} {:5} "
+              + "{pr/precision:.4f} PRC , "
+              + "{pr/recall:.4f} RCL, "
+              + "{pr/f1_score:.4f} F1"
+              ).format(epoch_ndx, mode_str, **metrics_dict, ))
+    log.info(("E{} {:5} "
+              + "{percent_all/acc:-6.2%} ACC , "
+                "{percent_all/tp:-6.2%} TP , "
+                "{percent_all/tn:-6.2%} TN"
+              ).format(epoch_ndx, mode_str, **metrics_dict, ))
+
+
+# -------------------------------------------------------------------------------
+
 
 def enumerateWithEstimate(
         iter_obj,

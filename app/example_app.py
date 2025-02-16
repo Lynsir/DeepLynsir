@@ -13,6 +13,9 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from util import util
 from dataset.example_dataset import ExampleDataset
 from paper.unet import UNet
@@ -21,18 +24,6 @@ log = util.logging.getLogger(__name__)
 log.setLevel(util.logging.DEBUG)
 
 EPSILON = 1e-6
-
-# Used for computeClassificationLoss and logMetrics to index into metrics_t/metrics_a
-# METRICS_LOSS_NDX = 0
-
-METRICS_TP_NDX = 1
-METRICS_FN_NDX = 2
-METRICS_FP_NDX = 3
-METRICS_TN_NDX = 4
-
-METRICS_DSC_NDX = 5
-
-METRICS_SIZE = 6
 
 
 class ExampleApp:
@@ -62,7 +53,6 @@ class ExampleApp:
         self.loss_sum = util.AverageMeter()
 
     def initModel(self):
-        # 使用标准U-net结构，五层深度，每层64个通道
         model = UNet(
             in_channels=3,
             n_classes=2,
@@ -84,7 +74,6 @@ class ExampleApp:
 
     def initCriterion(self, cri_str="diceLoss"):
         if cri_str.lower() == "diceloss":
-            # 使用DiceLoss作为损失函数
             from paper.lossfunc import diceLoss
             criterion = diceLoss
         else:
@@ -100,13 +89,11 @@ class ExampleApp:
         ds = ExampleDataset(data_type=data_type)
         shuffle = True if data_type == 'trn' else False
 
-        return DataLoader(
-            ds,
-            batch_size=self.batch_size,
-            num_workers=self.args.num_workers,
-            pin_memory=self.use_cuda,
-            shuffle=shuffle,
-        )
+        return DataLoader(ds,
+                          batch_size=self.batch_size,
+                          num_workers=self.args.num_workers,
+                          pin_memory=self.use_cuda,
+                          shuffle=shuffle, )
 
     def initTensorboardWriters(self):
         if self.trn_writer is None:
@@ -127,13 +114,11 @@ class ExampleApp:
         for batch_ndx, batch_tup in tqdm(enumerate(train_dl), ncols=100, total=len(train_dl),
                                          desc=f"Training   Epoch {epoch_ndx}", unit='batch'):
             self.optimizer.zero_grad()
-
             loss_var = self.computeBatchLoss(batch_tup)
             loss_var.backward()
-
             self.optimizer.step()
 
-        self.logHitstory(epoch_ndx, 'trn')
+        self.logHistory(epoch_ndx, 'trn')
 
     def doValidation(self, epoch_ndx, val_dl):
         self.model.eval()
@@ -146,7 +131,7 @@ class ExampleApp:
                                              desc=f"Validation Epoch {epoch_ndx}", unit='batch'):
                 self.computeBatchLoss(batch_tup)
 
-        return self.logHitstory(epoch_ndx, 'val')
+        return self.logHistory(epoch_ndx, 'val')
 
     def computeBatchLoss(self, batch_tup):
         input_t, label_t = batch_tup
@@ -155,20 +140,16 @@ class ExampleApp:
         label_g = label_t.to(self.device, non_blocking=True)
 
         prediction_g = self.model(input_g)
-
         loss_g = self.criterion(prediction_g, label_g.long())
 
         with torch.no_grad():
             self.loss_sum.update(loss_g.cpu().detach().numpy(), len(input_g))
-            # 利用softmax计算出预测张量两个通道（分别代表两个类）中像素分类的概率，然后选取概率大的通道标号组成新的预测结果
             pred_g = torch.argmax(F.softmax(prediction_g, dim=1), dim=1)
-            self.cm += confusion_matrix(label_g.flatten().cpu(), pred_g.flatten().cpu())
+            self.cm += confusion_matrix(label_g.flatten().cpu().numpy(), pred_g.flatten().cpu().numpy())
 
         return loss_g
 
-    def logHitstory(self, epoch_ndx, mode_str):
-        log.info("E{} {} logHitstory".format(epoch_ndx, type(self).__name__, ))
-
+    def computeMetrics(self):
         #   F   T
         # N TN  FP
         # P FN  TP
@@ -180,30 +161,23 @@ class ExampleApp:
         metrics_dict = {'loss/all': self.loss_sum.mean(),
                         'loss/dsc_score': 2 * tp / (2 * tp + fp + fn + EPSILON),
                         'loss/iou_score': tp / (tp + fp + fn + EPSILON),
-                        'percent_all/acc': (tp + tn) / (tp + tn + fp + fn + EPSILON) * 100,
-                        'percent_all/tp': tp / (tp + fn + EPSILON) * 100,
-                        'percent_all/tn': tn / (tn + fp + EPSILON) * 100,
+                        'percent_all/acc': (tp + tn) / (tp + tn + fp + fn + EPSILON),
+                        'percent_all/tp': tp / (tp + fn + EPSILON),
+                        'percent_all/tn': tn / (tn + fp + EPSILON),
                         }
 
         precision = metrics_dict['pr/precision'] = tp / (tp + fp + EPSILON)
         recall = metrics_dict['pr/recall'] = tp / (tp + fn + EPSILON)
-        f1_score = metrics_dict['pr/f1_score'] = 2 * (precision * recall) / ((precision + recall) or 1)
+        f1_score = metrics_dict['pr/f1_score'] = 2 * (precision * recall) / (precision + recall+ EPSILON)
 
-        log.info(("E{} {:5} "
-                  + "{loss/all:.4f} LOSS, "
-                  + "{loss/dsc_score:.4f} DSC, "
-                  + "{loss/iou_score:.4f} IOU"
-                  ).format(epoch_ndx, mode_str, **metrics_dict, ))
-        log.info(("E{} {:5} "
-                  + "{pr/precision:.4f} precision, "
-                  + "{pr/recall:.4f} recall, "
-                  + "{pr/f1_score:.4f} f1"
-                  ).format(epoch_ndx, mode_str, **metrics_dict, ))
-        log.info(("E{} {:5} "
-                  + "{percent_all/acc:-5.1f}% ACC, "
-                    "{percent_all/tp:-5.1f}% TP, "
-                    "{percent_all/tn:-5.1f}% TN"
-                  ).format(epoch_ndx, mode_str, **metrics_dict, ))
+        score = metrics_dict['loss/dsc_score']
+
+        return metrics_dict, score
+
+    def logHistory(self, epoch_ndx, mode_str):
+        metrics_dict, score = self.computeMetrics()
+
+        util.showMetrics(epoch_ndx, mode_str, metrics_dict)
 
         self.initTensorboardWriters()
         writer = getattr(self, mode_str + '_writer')
@@ -215,9 +189,6 @@ class ExampleApp:
 
         writer.flush()
 
-        # 使用Dice系数作为指标
-        score = metrics_dict['loss/dsc_score']
-
         return score
 
     def logImages(self, epoch_ndx, mode_str, dl):
@@ -225,20 +196,14 @@ class ExampleApp:
         dtset = dl.dataset
         for ndx in range(3):
             img_t, lab_t = dtset[ndx]
-            img_g = img_t.to(self.device)
-            # 构造输出形状为[1,2,H,W]
-            pred_g = self.model(img_g.unsqueeze(0))
+            pred_g = self.model(img_t.unsqueeze(0).to(self.device))
 
             pred_a = torch.argmax(F.softmax(pred_g, dim=1), dim=1).squeeze(0).detach().cpu().numpy()
             lab_a = lab_t.numpy()
 
-            # 转换成H,W,C
             img_a = img_t.numpy().copy().transpose(1, 2, 0)
-            # 假阳性修改为红色，0通道表示R
             img_a[:, :, 0] += pred_a & (1 - lab_a)
-            # 真阳性修改为绿色，1通道表示G
             img_a[:, :, 1] += pred_a & lab_a
-            # 假阴性修改为蓝色，2通道表示B
             img_a[:, :, 2] += (1 - pred_a) & lab_a
 
             img_a *= 0.5
@@ -248,9 +213,6 @@ class ExampleApp:
             writer.add_image(f'{mode_str}/pred_{ndx}: {dtset.datalines[ndx]}', img_a, epoch_ndx, dataformats='HWC')
 
             if epoch_ndx == 1:
-                # fix: 修复标签图像变红问题
-                # 原因：由于img_t底层内存共享数据，上面修改img_a会影响img_t，导致下面的img_a获取的是修改后的数据
-                # 解决方法：调用numpy的copy方法，创建一个新的内存空间，避免共享数据
                 img_a = img_t.numpy().copy().transpose(1, 2, 0)
                 img_a[:, :, 1] += lab_a  # Green
                 img_a *= 0.5
@@ -333,6 +295,8 @@ class ExampleApp:
 
         self.trn_writer.close()
         self.val_writer.close()
+
+        log.info("Training completed. Good luck!")
 
 
 if __name__ == "__main__":
