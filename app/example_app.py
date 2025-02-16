@@ -11,6 +11,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from sklearn.metrics import confusion_matrix
 
 from util import util
 from dataset.example_dataset import ExampleDataset
@@ -19,24 +20,19 @@ from paper.unet import UNet
 log = util.logging.getLogger(__name__)
 log.setLevel(util.logging.DEBUG)
 
+EPSILON = 1e-6
+
 # Used for computeClassificationLoss and logMetrics to index into metrics_t/metrics_a
-METRICS_LABEL_NDX = 0
-METRICS_LOSS_NDX = 1
-# METRICS_FN_LOSS_NDX = 2
-# METRICS_ALL_LOSS_NDX = 3
+# METRICS_LOSS_NDX = 0
 
-# METRICS_PTP_NDX = 4
-# METRICS_PFN_NDX = 5
-# METRICS_MFP_NDX = 6
+METRICS_TP_NDX = 1
+METRICS_FN_NDX = 2
+METRICS_FP_NDX = 3
+METRICS_TN_NDX = 4
 
-METRICS_TP_NDX = 7
-METRICS_FN_NDX = 8
-METRICS_FP_NDX = 9
-METRICS_TN_NDX = 10
+METRICS_DSC_NDX = 5
 
-METRICS_DSC_NDX = 11
-
-METRICS_SIZE = 12
+METRICS_SIZE = 6
 
 
 class ExampleApp:
@@ -61,6 +57,9 @@ class ExampleApp:
 
         self.validation_cadence = 5
         self.totalTrnSamples_count = 0
+
+        self.cm = np.empty((2, 2))
+        self.loss_sum = util.AverageMeter()
 
     def initModel(self):
         # 使用标准U-net结构，五层深度，每层64个通道
@@ -116,35 +115,40 @@ class ExampleApp:
             self.trn_writer = SummaryWriter(log_dir=log_dir + '_trn_seg_' + self.args.comment)
             self.val_writer = SummaryWriter(log_dir=log_dir + '_val_seg_' + self.args.comment)
 
+    def initCM(self):
+        self.cm.fill(0)
+
     def doTraining(self, epoch_ndx, train_dl):
-        trnMetrics_g = torch.zeros(METRICS_SIZE, len(train_dl.dataset), device=self.device)
         self.model.train()
 
+        self.initCM()
+        self.loss_sum.reset()
+
         for batch_ndx, batch_tup in tqdm(enumerate(train_dl), ncols=100, total=len(train_dl),
-                                         desc=f"Training Epoch {epoch_ndx}", unit='batch'):
+                                         desc=f"Training   Epoch {epoch_ndx}", unit='batch'):
             self.optimizer.zero_grad()
 
-            loss_var = self.computeBatchLoss(batch_ndx, batch_tup, trnMetrics_g)
+            loss_var = self.computeBatchLoss(batch_tup)
             loss_var.backward()
 
             self.optimizer.step()
 
-        self.totalTrnSamples_count += trnMetrics_g.size(1)
-
-        self.logMetrics(epoch_ndx, 'trn', trnMetrics_g.to('cpu'))
+        self.logHitstory(epoch_ndx, 'trn')
 
     def doValidation(self, epoch_ndx, val_dl):
+        self.model.eval()
+
         with torch.no_grad():
-            valMetrics_g = torch.zeros(METRICS_SIZE, len(val_dl.dataset), device=self.device)
-            self.model.eval()
+            self.initCM()
+            self.loss_sum.reset()
 
             for batch_ndx, batch_tup in tqdm(enumerate(val_dl), total=len(val_dl), ncols=100,
                                              desc=f"Validation Epoch {epoch_ndx}", unit='batch'):
-                self.computeBatchLoss(batch_ndx, batch_tup, valMetrics_g)
+                self.computeBatchLoss(batch_tup)
 
-        return self.logMetrics(epoch_ndx, 'val', valMetrics_g.to('cpu'))
+        return self.logHitstory(epoch_ndx, 'val')
 
-    def computeBatchLoss(self, batch_ndx, batch_tup, metrics_g):
+    def computeBatchLoss(self, batch_tup):
         input_t, label_t = batch_tup
 
         input_g = input_t.to(self.device, non_blocking=True)
@@ -154,76 +158,56 @@ class ExampleApp:
 
         loss_g = self.criterion(prediction_g, label_g.long())
 
-        self.computeMetrics(label_g, prediction_g, batch_ndx * self.batch_size, len(input_t), loss_g, metrics_g)
-
-        return loss_g.mean()
-
-    def computeMetrics(self, label_g, prediction_g, start_ndx, length, loss_g, metrics_g):
-        # TODO：可使用sklearn.metrics.confusion_matrix计算混淆矩阵，后续再做
-        start_ndx = start_ndx
-        end_ndx = start_ndx + length
-
         with torch.no_grad():
+            self.loss_sum.update(loss_g.cpu().detach().numpy(), len(input_g))
             # 利用softmax计算出预测张量两个通道（分别代表两个类）中像素分类的概率，然后选取概率大的通道标号组成新的预测结果
-            # 为保证布尔运算的正常，需要将prediction_g和label_g转换成布尔类型
-            predictionBool_g = torch.argmax(F.softmax(prediction_g, dim=1), dim=1).to(torch.bool)
-            labelBool_g = label_g.to(torch.bool)
+            pred_g = torch.argmax(F.softmax(prediction_g, dim=1), dim=1)
+            self.cm += confusion_matrix(label_g.flatten().cpu(), pred_g.flatten().cpu())
 
-            # 对最后两个维度求和, 因为是二维图像
-            tp = (predictionBool_g * labelBool_g).sum(dim=[-1, -2])
-            tn = ((~predictionBool_g) * (~labelBool_g)).sum(dim=[-1, -2])
-            fn = ((~predictionBool_g) * labelBool_g).sum(dim=[-1, -2])
-            fp = (predictionBool_g * (~labelBool_g)).sum(dim=[-1, -2])
+        return loss_g
 
-            metrics_g[METRICS_LOSS_NDX, start_ndx:end_ndx] = loss_g
-            metrics_g[METRICS_TP_NDX, start_ndx:end_ndx] = tp
-            metrics_g[METRICS_TN_NDX, start_ndx:end_ndx] = tn
-            metrics_g[METRICS_FN_NDX, start_ndx:end_ndx] = fn
-            metrics_g[METRICS_FP_NDX, start_ndx:end_ndx] = fp
-            # 计算Dice系数
-            metrics_g[METRICS_DSC_NDX, start_ndx:end_ndx] = (2 * tp) / (2 * tp + fn + fp + 1)
+    def logHitstory(self, epoch_ndx, mode_str):
+        log.info("E{} {} logHitstory".format(epoch_ndx, type(self).__name__, ))
 
-    def logMetrics(self, epoch_ndx, mode_str, metrics_t):
-        log.info("E{} {} logMetrics".format(epoch_ndx, type(self).__name__, ))
+        #   F   T
+        # N TN  FP
+        # P FN  TP
+        tp = self.cm[1, 1]
+        tn = self.cm[0, 0]
+        fn = self.cm[1, 0]
+        fp = self.cm[0, 1]
 
-        metrics_a = metrics_t.detach().numpy()
-        sum_a = metrics_a.sum(axis=1)
-        assert np.isfinite(metrics_a).all()
-
-        allPos_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_FN_NDX]
-        allNeg_count = sum_a[METRICS_TN_NDX] + sum_a[METRICS_FP_NDX]
-        all_count = allPos_count + allNeg_count
-        true_count = sum_a[METRICS_TP_NDX] + sum_a[METRICS_TN_NDX]
-
-        metrics_dict = {'loss/all': metrics_a[METRICS_LOSS_NDX].mean(),
-                        'loss/dsc_score': metrics_a[METRICS_DSC_NDX].mean(),
-                        'percent_all/acc': true_count / (all_count or 1) * 100,
-                        'percent_all/tp': sum_a[METRICS_TP_NDX] / (allPos_count or 1) * 100,
-                        'percent_all/tn': sum_a[METRICS_TN_NDX] / (allNeg_count or 1) * 100,
+        metrics_dict = {'loss/all': self.loss_sum.mean(),
+                        'loss/dsc_score': 2 * tp / (2 * tp + fp + fn + EPSILON),
+                        'loss/iou_score': tp / (tp + fp + fn + EPSILON),
+                        'percent_all/acc': (tp + tn) / (tp + tn + fp + fn + EPSILON) * 100,
+                        'percent_all/tp': tp / (tp + fn + EPSILON) * 100,
+                        'percent_all/tn': tn / (tn + fp + EPSILON) * 100,
                         }
 
-        precision = metrics_dict['pr/precision'] = sum_a[METRICS_TP_NDX] \
-                                                   / ((sum_a[METRICS_TP_NDX] + sum_a[METRICS_FP_NDX]) or 1)
-        recall = metrics_dict['pr/recall'] = sum_a[METRICS_TP_NDX] \
-                                             / ((sum_a[METRICS_TP_NDX] + sum_a[METRICS_FN_NDX]) or 1)
+        precision = metrics_dict['pr/precision'] = tp / (tp + fp + EPSILON)
+        recall = metrics_dict['pr/recall'] = tp / (tp + fn + EPSILON)
+        f1_score = metrics_dict['pr/f1_score'] = 2 * (precision * recall) / ((precision + recall) or 1)
 
-        metrics_dict['pr/f1_score'] = 2 * (precision * recall) / ((precision + recall) or 1)
-
-        log.info(("E{} {:8} "
-                  + "{loss/all:.4f} loss, "
+        log.info(("E{} {:5} "
+                  + "{loss/all:.4f} LOSS, "
+                  + "{loss/dsc_score:.4f} DSC, "
+                  + "{loss/iou_score:.4f} IOU"
+                  ).format(epoch_ndx, mode_str, **metrics_dict, ))
+        log.info(("E{} {:5} "
                   + "{pr/precision:.4f} precision, "
                   + "{pr/recall:.4f} recall, "
                   + "{pr/f1_score:.4f} f1"
                   ).format(epoch_ndx, mode_str, **metrics_dict, ))
-        log.info(("E{} {:8} "
-                  + "{loss/all:.4f} loss, {loss/dsc_score:.4f} dsc_score, "
-                  + "{percent_all/acc:-5.1f}% ACC, {percent_all/tp:-5.1f}% TP, {percent_all/tn:-5.1f}% TN"
-                  ).format(epoch_ndx, mode_str + '_all', **metrics_dict, ))
+        log.info(("E{} {:5} "
+                  + "{percent_all/acc:-5.1f}% ACC, "
+                    "{percent_all/tp:-5.1f}% TP, "
+                    "{percent_all/tn:-5.1f}% TN"
+                  ).format(epoch_ndx, mode_str, **metrics_dict, ))
 
         self.initTensorboardWriters()
         writer = getattr(self, mode_str + '_writer')
 
-        # prefix_str = 'seg_'
         prefix_str = self.__class__.__name__ + '_'
 
         for key, value in metrics_dict.items():

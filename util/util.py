@@ -51,7 +51,6 @@ def parseArgs(args=None, appname=None):
     return parser.parse_args(args)
 
 
-
 def importstr(module_str, from_=None):
     """
     >>> importstr('os')
@@ -73,6 +72,27 @@ def importstr(module_str, from_=None):
             raise ImportError('{}.{}'.format(module_str, from_))
     return module
 
+
+# a class for calculating the average of the accuracy and the loss
+# -------------------------------------------------------------------------------
+class AverageMeter(object):
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.sum += val * n
+        self.count += n
+
+    def mean(self):
+        return self.sum / self.count
+
+
+# -------------------------------------------------------------------------------
 
 def enumerateWithEstimate(
         iter_obj,
