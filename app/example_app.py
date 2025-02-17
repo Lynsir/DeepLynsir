@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix
+from early_stopping_pytorch import EarlyStopping
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -36,6 +37,7 @@ class ExampleApp:
         self.time_str = datetime.now().strftime('%Y-%m-%d_%H.%M.%S')
         self.trn_writer = None
         self.val_writer = None
+        self.early_stopping = EarlyStopping(patience=7, path="", trace_func=log.info)
 
         self.use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
@@ -129,9 +131,9 @@ class ExampleApp:
 
             for batch_ndx, batch_tup in tqdm(enumerate(val_dl), total=len(val_dl), ncols=100,
                                              desc=f"Validation Epoch {epoch_ndx}", unit='batch'):
-                self.computeBatchLoss(batch_tup)
+                loss_g = self.computeBatchLoss(batch_tup)
 
-        return self.logHistory(epoch_ndx, 'val')
+        return self.logHistory(epoch_ndx, 'val'), loss_g
 
     def computeBatchLoss(self, batch_tup):
         input_t, label_t = batch_tup
@@ -285,13 +287,18 @@ class ExampleApp:
 
             if epoch_ndx == 1 or epoch_ndx % self.validation_cadence == 0:
                 # if validation is wanted
-                score = self.doValidation(epoch_ndx, val_dl)
+                score, loss_g = self.doValidation(epoch_ndx, val_dl)
                 best_score = max(score, best_score)
 
                 # self.saveModel('seg', epoch_ndx, score == best_score)
 
                 self.logImages(epoch_ndx, 'trn', train_dl)
                 self.logImages(epoch_ndx, 'val', val_dl)
+
+                self.early_stopping(loss_g, self.model)
+                if self.early_stopping.early_stop:
+                    log.info("Early stopping in Epoch {} of {}".format(epoch_ndx, self.args.epochs))
+                    break
 
         self.trn_writer.close()
         self.val_writer.close()
