@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix
-from early_stopping_pytorch import EarlyStopping
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -37,7 +36,6 @@ class ExampleApp:
         self.time_str = datetime.now().strftime('%Y-%m-%d_%H.%M.%S')
         self.trn_writer = None
         self.val_writer = None
-        self.early_stopping = EarlyStopping(patience=7, path="", trace_func=log.info)
 
         self.use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
@@ -295,10 +293,6 @@ class ExampleApp:
                 self.logImages(epoch_ndx, 'trn', train_dl)
                 self.logImages(epoch_ndx, 'val', val_dl)
 
-                self.early_stopping(loss_g, self.model)
-                if self.early_stopping.early_stop:
-                    log.info("Early stopping in Epoch {} of {}".format(epoch_ndx, self.args.epochs))
-                    break
 
         self.trn_writer.close()
         self.val_writer.close()
