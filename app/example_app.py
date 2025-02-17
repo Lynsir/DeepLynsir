@@ -74,7 +74,7 @@ class ExampleApp:
 
     def initCriterion(self, cri_str="diceLoss"):
         if cri_str.lower() == "diceloss":
-            from paper.lossfunc import diceLoss
+            from paper.loss import diceLoss
             criterion = diceLoss
         else:
             criterion = getattr(nn, cri_str)().to(self.device)

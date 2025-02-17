@@ -6,6 +6,8 @@ import numpy as np
 from util.logconf import logging
 import util.augmentation as augmentation
 
+from dataset.config import EXAMPLE_PATH
+
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 # log.setLevel(logging.INFO)
@@ -14,7 +16,10 @@ log.setLevel(logging.DEBUG)
 
 class ExampleDataset(Dataset):
     def __init__(self, data_type='trn'):
-        self.root = r"."
+        self.root = EXAMPLE_PATH
+        assert os.path.exists(
+            self.root), f"Dataset path not exists: {self.root}. Please do sure dataset/config.py including correct path"
+
         if data_type.lower() == 'trn':
             self.source = os.path.join(self.root, "data/train.txt")
         elif data_type.lower() == 'val':
@@ -26,7 +31,7 @@ class ExampleDataset(Dataset):
             # 从文件中读取行默认结尾有一个'\n', strip或者split都可以(不推荐使用切片)
             self.datalines = [dt.strip() for dt in f.readlines()]
 
-        log.info("{} {} samples".format( len(self.datalines), data_type))
+        log.info("{} {} samples".format(len(self.datalines), data_type))
 
     def __len__(self):
         return len(self.datalines)
@@ -44,7 +49,6 @@ class ExampleDataset(Dataset):
         # 设置transform，数据预处理
         image_transform = augmentation.get_transform(image.size, IsResize=True, IsTotensor=True, IsNormalize=True)
         label_transform = augmentation.get_transform(image.size, IsResize=True, IsTotensor=False, IsNormalize=False)
-
 
         # PIL读取的图片默认是 H W C 形状，需要转换成 C H W, 并且将像素值从[0,255]转换成[0,1]
         # image = torch.from_numpy(np.array(image) / 255.0).permute(2, 0, 1).to(torch.float32)

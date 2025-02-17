@@ -1,0 +1,2 @@
+
+EXAMPLE_PATH = r"."
