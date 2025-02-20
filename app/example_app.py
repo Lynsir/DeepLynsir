@@ -61,8 +61,6 @@ class ExampleApp:
             up_mode='upconv',
         )
 
-        model = nn.Sequential(model, nn.Sigmoid())
-
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
             if torch.cuda.device_count() > 1:
@@ -263,6 +261,13 @@ class ExampleApp:
         with open(file_path, 'rb') as f:
             log.info("SHA1: " + hashlib.sha1(f.read()).hexdigest())
 
+    def getTime(self):
+        p = datetime.now() - datetime.strptime(self.time_str, '%Y-%m-%d_%H.%M.%S')
+        hours, remainder = divmod(p.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        return f'{hours:02}:{minutes:02}:{seconds:02}'
+
     def run(self):
 
         log.info("Starting {}\n\t\t{}".format(type(self).__name__, self.args))
@@ -297,7 +302,7 @@ class ExampleApp:
         self.trn_writer.close()
         self.val_writer.close()
 
-        log.info("Training completed. Good luck!")
+        log.info(f"Total time: {self.getTime()}" + "Training completed. Lynsir luck!")
 
 
 if __name__ == "__main__":
