@@ -1,1 +1,3 @@
-EXAMPLE_PATH = r"."
+EXAMPLE_PATH = r".."
+from example_dataset import ExampleDataset
+

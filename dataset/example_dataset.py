@@ -73,5 +73,5 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     lab_a = lab.numpy()
-    plt.imshow(lab_a[0], cmap='gray')
+    plt.imshow(lab_a, cmap='gray')
     plt.show()

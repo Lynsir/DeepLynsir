@@ -18,8 +18,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from util import util
-from dataset.example_dataset import ExampleDataset
-from paper.unet import UNet
+from dataset import ExampleDataset
+from paper import UNet
 
 log = util.logging.getLogger(__name__)
 log.setLevel(util.logging.DEBUG)
