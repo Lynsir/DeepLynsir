@@ -1,4 +1,5 @@
 import hashlib
+import math
 import shutil
 import sys
 import os
@@ -60,6 +61,7 @@ class ExampleApp:
             batch_norm=True,
             up_mode='upconv',
         )
+        self.model_name = model._get_name()
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -157,8 +159,10 @@ class ExampleApp:
         fp = self.cm[0, 1]
 
         metrics_dict = {'loss/all': self.loss_sum.mean(),
-                        'loss/dsc_score': 2 * tp / (2 * tp + fp + fn + EPSILON),
-                        'loss/iou_score': tp / (tp + fp + fn + EPSILON),
+                        'metrics/mcc_score': (tp * tn - fp * fn) / math.sqrt(
+                            (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn) + EPSILON),
+                        'metrics/dsc_score': 2 * tp / (2 * tp + fp + fn + EPSILON),
+                        'metrics/iou_score': tp / (tp + fp + fn + EPSILON),
                         'percent_all/acc': (tp + tn) / (tp + tn + fp + fn + EPSILON),
                         'percent_all/tp': tp / (tp + fn + EPSILON),
                         'percent_all/tn': tn / (tn + fp + EPSILON),
@@ -166,9 +170,9 @@ class ExampleApp:
 
         precision = metrics_dict['pr/precision'] = tp / (tp + fp + EPSILON)
         recall = metrics_dict['pr/recall'] = tp / (tp + fn + EPSILON)
-        f1_score = metrics_dict['pr/f1_score'] = 2 * (precision * recall) / (precision + recall+ EPSILON)
+        f1_score = metrics_dict['pr/f1_score'] = 2 * (precision * recall) / (precision + recall + EPSILON)
 
-        score = metrics_dict['loss/dsc_score']
+        score = metrics_dict['metrics/dsc_score']
 
         return metrics_dict, score
 
@@ -269,14 +273,14 @@ class ExampleApp:
         return f'{hours:02}:{minutes:02}:{seconds:02}'
 
     def run(self):
-
-        log.info("Starting {}\n\t\t{}".format(type(self).__name__, self.args))
+        log.info("Starting {} -- {} -- {}".format(type(self).__name__, self.model_name, self.args))
 
         train_dl = self.initDataLoader('trn')
         val_dl = self.initDataLoader('val')
 
         best_score = 0.0
         for epoch_ndx in range(1, self.args.epochs + 1):
+            log.info("=============================================================")
             log.info("Epoch {} of {}, {}/{} batches of size {}*{}".format(
                 epoch_ndx,
                 self.args.epochs,
@@ -302,7 +306,10 @@ class ExampleApp:
         self.trn_writer.close()
         self.val_writer.close()
 
-        log.info(f"Total time: {self.getTime()}" + "Training completed. Lynsir luck!")
+        log.info(f"=========================================")
+        log.info(f"Training model: {self.model_name} ")
+        log.info(f"Total time: {self.getTime()}")
+        log.info(f"Training completed. Lynsir luck!")
 
 
 if __name__ == "__main__":

@@ -98,8 +98,9 @@ class AverageMeter(object):
 def showMetrics(epoch_ndx, mode_str, metrics_dict):
     log.info(("E{} {:5} "
               + "{loss/all:.4f} LOSS, "
-              + "{loss/dsc_score:.4f} DSC, "
-              + "{loss/iou_score:.4f} IOU"
+              + "{metrics/mcc_score:.4f} MCC, "
+              + "{metrics/dsc_score:.4f} DSC, "
+              + "{metrics/iou_score:.4f} IOU"
               ).format(epoch_ndx, mode_str, **metrics_dict, ))
     log.info(("E{} {:5} "
               + "{pr/precision:.4f} PRC , "
