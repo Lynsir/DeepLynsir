@@ -1,2 +1,0 @@
-
-EXAMPLE_PATH = r"."

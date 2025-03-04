@@ -6,7 +6,7 @@ import numpy as np
 from util.logconf import logging
 import util.augmentation as augmentation
 
-from dataset.config import EXAMPLE_PATH
+from dataset import EXAMPLE_PATH
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
